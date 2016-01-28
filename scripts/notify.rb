@@ -21,12 +21,28 @@ def sms_message(first_name)
   "questionnaire: ENV['QUESTIONNAIRE_LINK']"
 end
 
+def round_down_to_30_minutes(time)
+  round_to_seconds = 30 * 60
+
+  Time.at(time.to_i / round_to_seconds * round_to_seconds)
+end
+
+def hour_minute(time_or_string)
+  return time_or_string.strftime('%H%M') if time_or_string.is_a?(Time)
+
+  time_or_string.to_s
+    .gsub(/\D/, '') # Remove non-digits
+    .gsub(/^(\d\d)$/, '\100') # 0-pad the minutes if missing
+end
+
 participants.each do |row|
-  first_name, last_name, email, phone, notification_hour, start_date, end_date = row
+  first_name, last_name, email, phone, notification_time, start_date, end_date = row
 
   name = "#{first_name} #{last_name}"
   current_time = Time.now.localtime('-05:00') # Get the current time in EST.
   current_date = current_time.to_date
+
+  rounded_time = round_down_to_30_minutes(current_time)
 
   if current_date < Date.parse(start_date)
     puts "Skipping #{name} because it's before their start date."
@@ -38,8 +54,8 @@ participants.each do |row|
     next
   end
 
-  if notification_hour.to_i != current_time.hour
-    puts "Skipping #{name} because their notification hour is #{notification_hour} and it's #{current_time.hour}."
+  if hour_minute(notification_time) != hour_minute(rounded_time)
+    puts "Skipping #{name} because their notification time is #{notification_time} and it's #{rounded_time}."
     next
   end
 
