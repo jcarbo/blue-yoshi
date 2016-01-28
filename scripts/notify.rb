@@ -59,16 +59,28 @@ participants.each do |row|
     next
   end
 
-  twilio_client.account.messages.create(
-    :from => ENV['TWILIO_PHONE_NUMBER'],
-    :to => phone,
-    :body => sms_message(first_name)
-  )
+  messages_sent = []
 
-  Mail.deliver do
-       to email
-     from "#{ENV['EMAIL_NAME']} <#{ENV['EMAIL_USERNAME']}>"
-  subject 'Reminder - Fill out your questionnaire'
-     body email_message(first_name)
+  if phone && !phone.empty?
+    messages_sent << "SMS (#{phone})"
+
+    twilio_client.account.messages.create(
+      :from => ENV['TWILIO_PHONE_NUMBER'],
+      :to => phone,
+      :body => sms_message(first_name)
+    )
   end
+
+  if email && !email.empty?
+    messages_sent << "email (#{email})"
+
+    Mail.deliver do
+         to email
+       from "#{ENV['EMAIL_NAME']} <#{ENV['EMAIL_USERNAME']}>"
+    subject 'Reminder - Fill out your questionnaire'
+       body email_message(first_name)
+    end
+  end
+
+  puts "++ Sent #{messages_sent.empty? ? 'nothing' : messages_sent.join(', ')} to #{name}"
 end
