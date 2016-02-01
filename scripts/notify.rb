@@ -24,7 +24,7 @@ end
 def round_down_to_30_minutes(time)
   round_to_seconds = 30 * 60
 
-  Time.at(time.to_i / round_to_seconds * round_to_seconds)
+  Time.at(time.to_i / round_to_seconds * round_to_seconds).localtime('-05:00')
 end
 
 def hour_minute(time_or_string)
@@ -39,7 +39,7 @@ participants.each do |row|
   first_name, last_name, email, phone, notification_time, start_date, end_date = row
 
   name = "#{first_name} #{last_name}"
-  current_time = Time.now.localtime('-05:00') # Get the current time in EST.
+  current_time = Time.now.localtime('-05:00')
   current_date = current_time.to_date
 
   rounded_time = round_down_to_30_minutes(current_time)
