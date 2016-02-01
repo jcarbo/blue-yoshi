@@ -1,11 +1,7 @@
 require_relative '../setup'
 
-response = Faraday.get("https://docs.google.com/spreadsheets/d/#{ENV['GOOGLE_SHEET_ID']}/export?format=csv")
-participants = CSV.parse(response.body)[1..-1]
-
-puts "Starting sync #{Time.now} for #{participants.count} participants"
-
-twilio_client = Twilio::REST::Client.new(
+GOOGLE_CLIENT = GoogleClient.new
+TWILIO_CLIENT = Twilio::REST::Client.new(
   ENV['TWILIO_ACCOUNT_SID'],
   ENV['TWILIO_AUTH_TOKEN']
 )
@@ -35,6 +31,34 @@ def hour_minute(time_or_string)
     .gsub(/^(\d\d)$/, '\100') # 0-pad the minutes if missing
 end
 
+def send_email(email, first_name, last_name)
+  return unless email && !email.empty?
+
+  message = Mail.new do
+    to "#{first_name} #{last_name} <#{email}>".strip
+    from "#{ENV['EMAIL_NAME']} <#{ENV['EMAIL_USERNAME']}>"
+    subject 'Reminder - Fill out your questionnaire'
+    body email_message(first_name)
+  end
+
+  GOOGLE_CLIENT.send_message(message)
+end
+
+def send_sms(phone, first_name)
+  return unless phone && !phone.empty?
+
+  TWILIO_CLIENT.account.messages.create(
+    :from => ENV['TWILIO_PHONE_NUMBER'],
+    :to => phone,
+    :body => sms_message(first_name)
+  )
+end
+
+response = Faraday.get("https://docs.google.com/spreadsheets/d/#{ENV['GOOGLE_SHEET_ID']}/export?format=csv")
+participants = CSV.parse(response.body)[1..-1]
+
+puts "Starting sync #{Time.now} for #{participants.count} participants"
+
 participants.each do |row|
   first_name, last_name, email, phone, notification_time, start_date, end_date = row
 
@@ -61,26 +85,14 @@ participants.each do |row|
 
   messages_sent = []
 
-  if email && !email.empty?
+  if send_email(email, first_name, last_name)
     messages_sent << "email (#{email})"
-
-    Mail.deliver do
-         to email
-       from "#{ENV['EMAIL_NAME']} <#{ENV['EMAIL_USERNAME']}>"
-    subject 'Reminder - Fill out your questionnaire'
-       body email_message(first_name)
-    end
   end
 
-  if phone && !phone.empty?
+  if send_sms(phone, first_name)
     messages_sent << "SMS (#{phone})"
-
-    twilio_client.account.messages.create(
-      :from => ENV['TWILIO_PHONE_NUMBER'],
-      :to => phone,
-      :body => sms_message(first_name)
-    )
   end
 
   puts "++ Sent #{messages_sent.empty? ? 'nothing' : messages_sent.join(', ')} to #{name}"
+  sleep(1)
 end
