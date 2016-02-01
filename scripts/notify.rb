@@ -18,7 +18,7 @@ end
 
 def sms_message(first_name)
   "Hey #{first_name}, please take a moment to fill out your " \
-  "questionnaire: ENV['QUESTIONNAIRE_LINK']"
+  "questionnaire: #{ENV['QUESTIONNAIRE_LINK']}"
 end
 
 def round_down_to_30_minutes(time)
