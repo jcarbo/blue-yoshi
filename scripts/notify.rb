@@ -28,7 +28,8 @@ def hour_minute(time_or_string)
 
   time_or_string.to_s
     .gsub(/\D/, '') # Remove non-digits
-    .gsub(/^(\d\d)$/, '\100') # 0-pad the minutes if missing
+    .gsub(/^(\d{1,2})$/, '\100') # 0-pad the minutes if missing
+    .gsub(/^(\d{3})$/, '0\1') # 0-pad the hour if necessary
 end
 
 def send_email(email, first_name, last_name)
