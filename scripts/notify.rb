@@ -6,15 +6,35 @@ TWILIO_CLIENT = Twilio::REST::Client.new(
   ENV['TWILIO_AUTH_TOKEN']
 )
 
-def email_message(first_name)
-  "Hey #{first_name},\n\n" \
-  "Please take a moment to fill out your questionnaire:\n" \
-  "#{ENV['QUESTIONNAIRE_LINK']}"
+def email_message(data)
+  formatted_date = Date.parse(data[:end_date]).strftime('%A, %B %-d')
+  personalized_link = "#{ENV['QUESTIONNAIRE_LINK']}&CID=#{data[:cid]}"
+
+  lines = [
+    "Hi #{data[:first_name]}!",
+    '',
+    "Please take a moment to fill out your daily sleep survey: #{personalized_link}",
+    '',
+    "We'll see you soon for your second lab visit on #{formatted_date}.",
+    '',
+    'Thanks,',
+    'PASO Lab'
+  ]
+
+  lines.join("\n")
 end
 
-def sms_message(first_name)
-  "Hey #{first_name}, please take a moment to fill out your " \
-  "questionnaire: #{ENV['QUESTIONNAIRE_LINK']}"
+def sms_message(data)
+  formatted_date = Date.parse(data[:end_date]).strftime('%A, %B %-d')
+  personalized_link = "#{ENV['QUESTIONNAIRE_LINK']}&CID=#{data[:cid]}"
+
+  lines = [
+    "Hi #{data[:first_name]}! Please take a moment to fill out your daily sleep survey: #{personalized_link}",
+    "We'll see you soon for your second lab visit on #{formatted_date}.",
+    'Thanks, PASO Lab'
+  ]
+
+  lines.join("\n")
 end
 
 def round_down_to_30_minutes(time)
@@ -32,26 +52,26 @@ def hour_minute(time_or_string)
     .gsub(/^(\d{3})$/, '0\1') # 0-pad the hour if necessary
 end
 
-def send_email(email, first_name, last_name)
+def send_email(email, columns)
   return unless email && !email.empty?
 
   message = Mail.new do
-    to "#{first_name} #{last_name} <#{email}>".strip
+    to "#{columns[:first_name]} #{columns[:last_name]} <#{email}>".strip
     from "#{ENV['EMAIL_NAME']} <#{ENV['EMAIL_USERNAME']}>"
-    subject 'Reminder - Fill out your questionnaire'
-    body email_message(first_name)
+    subject 'Reminder - Complete your daily sleep survey'
+    body email_message(columns)
   end
 
   GOOGLE_CLIENT.send_message(message)
 end
 
-def send_sms(phone, first_name)
+def send_sms(phone, columns)
   return unless phone && !phone.empty?
 
   TWILIO_CLIENT.account.messages.create(
     :from => ENV['TWILIO_PHONE_NUMBER'],
     :to => phone,
-    :body => sms_message(first_name)
+    :body => sms_message(columns)
   )
 end
 
@@ -61,7 +81,18 @@ participants = CSV.parse(response.body)[1..-1]
 puts "Starting sync #{Time.now} for #{participants.count} participants"
 
 participants.each do |row|
-  first_name, last_name, email, phone, notification_time, start_date, end_date = row
+  first_name, last_name, email, phone, cid, notification_time, start_date, end_date = row
+
+  columns = {
+    :first_name => first_name,
+    :last_name => last_name,
+    :email => email,
+    :phone => phone,
+    :cid => cid,
+    :notification_time => notification_time,
+    :start_date => start_date,
+    :end_date => end_date
+  }
 
   name = "#{first_name} #{last_name}"
   current_time = Time.now.localtime('-05:00')
@@ -86,11 +117,11 @@ participants.each do |row|
 
   messages_sent = []
 
-  if send_email(email, first_name, last_name)
+  if send_email(email, columns)
     messages_sent << "email (#{email})"
   end
 
-  if send_sms(phone, first_name)
+  if send_sms(phone, columns)
     messages_sent << "SMS (#{phone})"
   end
 
