@@ -1,12 +1,16 @@
 require_relative '../setup'
 
-Time.zone = 'Eastern Time (US & Canada)'
+TIME_ZONE = 'Eastern Time (US & Canada)'
 
 GOOGLE_CLIENT = GoogleClient.new
 TWILIO_CLIENT = Twilio::REST::Client.new(
   ENV['TWILIO_ACCOUNT_SID'],
   ENV['TWILIO_AUTH_TOKEN']
 )
+
+def current_time
+  Time.now.in_time_zone(TIME_ZONE)
+end
 
 def email_message(data)
   formatted_date = Date.parse(data[:end_date]).strftime('%A, %B %-d')
@@ -42,7 +46,7 @@ end
 def round_down_to_30_minutes(time)
   round_to_seconds = 30 * 60
 
-  Time.at(time.to_i / round_to_seconds * round_to_seconds)
+  Time.at(time.to_i / round_to_seconds * round_to_seconds).in_time_zone(TIME_ZONE)
 end
 
 def hour_minute(time_or_string)
@@ -78,27 +82,27 @@ def send_sms(phone, attributes)
 end
 
 def send_notification(type, attributes)
-  rounded_time = round_down_to_30_minutes(Time.now)
+  rounded_time = round_down_to_30_minutes(current_time)
 
   name = "#{attributes[:first_name]} #{attributes[:last_name]}"
 
-  if type == :morning && hour_minute(attributes[:morning_time]) != hour_minute(rounded_time)
-    puts "Skipping #{name} because their morning notification time is #{attributes[:morning_time]} and it's #{rounded_time}."
-    return
-  end
-
-  if type == :evening && hour_minute(attributes[:evening_time]) != hour_minute(rounded_time)
-    puts "Skipping #{name} because their evening notification time is #{attributes[:evening_time]} and it's #{rounded_time}."
-    return
-  end
-
-  link =
+  time, link =
     case type
-    when :morning then ENV['MORNING_QUESTIONNAIRE_LINK']
-    when :evening then ENV['EVENING_QUESTIONNAIRE_LINK']
+    when :morning
+      [attributes[:morning_time], ENV['MORNING_QUESTIONNAIRE_LINK']]
+    when :evening
+      [attributes[:evening_time], ENV['EVENING_QUESTIONNAIRE_LINK']]
     else
       return
     end
+
+  if hour_minute(time) != hour_minute(rounded_time)
+    puts "Skipping #{type} notification for #{name} because their preference is #{time} and it's #{rounded_time}."
+    return
+  end
+
+  puts
+  puts "--> Sending #{type} notification for #{name} because their preference is #{time}."
 
   messages_sent = []
 
@@ -110,14 +114,15 @@ def send_notification(type, attributes)
     messages_sent << "SMS (#{attributes[:phone]})"
   end
 
-  puts "++ Sent #{messages_sent.empty? ? 'nothing' : messages_sent.join(', ')} to #{name}"
+  puts "--> ++ Sent #{messages_sent.empty? ? 'nothing' : messages_sent.join(', ')} to #{name}"
+  puts
   sleep(1)
 end
 
 response = Faraday.get("https://docs.google.com/spreadsheets/d/#{ENV['GOOGLE_SHEET_ID']}/export?format=csv")
 participants = CSV.parse(response.body)[1..-1]
 
-puts "Starting sync #{Time.now} for #{participants.count} participants"
+puts "Starting sync #{current_time} for #{participants.count} participants"
 
 participants.each do |row|
   first_name, last_name, email, phone, cid, morning_time, evening_time, start_date, end_date = row
@@ -135,7 +140,7 @@ participants.each do |row|
   }
 
   name = "#{first_name} #{last_name}"
-  current_date = Time.now.to_date
+  current_date = current_time.to_date
 
   if current_date < Date.parse(start_date)
     puts "Skipping #{name} because it's before their start date."
